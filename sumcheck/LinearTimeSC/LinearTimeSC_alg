@@ -1,0 +1,79 @@
+import csv, itertools, random, time
+from typing import Dict, Tuple, List
+
+def load_eval_table_from_csv(path, n, p):
+    expected = 2 ** n
+    with open(path, newline='') as f:
+        reader = csv.reader(f)
+        nums = []
+        for row in reader:
+            nums.extend(int(x) % p for x in row if x.strip() != "")
+    if len(nums) < expected:
+        raise ValueError(f"CSV has {len(nums)} values, need {expected}")
+    nums = nums[:expected]
+    table = {b: nums[i] for i, b in enumerate(itertools.product((0,1), repeat=n))}
+    return table
+
+def get_challenges(n: int, p: int) -> List[int]:
+    raw = input(f"Enter {n} challenges r_i (comma) or leave blank for random: ").strip()
+    if not raw:
+        return [random.randint(0, p - 1) for _ in range(n)]
+    vals = [int(x) % p for x in raw.split(',')]
+    if len(vals) != n:
+        raise ValueError("Incorrect number of challenges")
+    return vals
+
+def linear_time_sc(table: Dict[Tuple[int,...], int],
+                   n: int,
+                   p: int,
+                   r: List[int]) -> None:
+    ops = 0
+    t0  = time.time()
+
+    claimed = sum(table.values()) % p
+    print(f"\n[Prover] Claim S = {claimed}")
+    print(f"[Verifier] Challenges r = {r}\n")
+
+    A = [table]
+
+    for j in range(n):
+        Aj       = A[-1]
+        pj       = {}
+        rest_len = n - j - 1
+
+        for x in (0, 1):
+            s = 0
+            for rest in itertools.product((0, 1), repeat=max(rest_len, 0)):
+                s = (s + Aj[(x,) + rest]) % p
+                ops += 1
+            pj[x] = s
+        print(f"Round {j+1}: p_{j+1}(0)={pj[0]}, p_{j+1}(1)={pj[1]}")
+
+        if j == n - 1:
+            break
+
+        rj, A_next = r[j], {}
+        for rest in itertools.product((0, 1), repeat=rest_len):
+            v0, v1 = Aj[(0,) + rest], Aj[(1,) + rest]
+            val = (v0 * (1 - rj) + v1 * rj) % p
+            ops += 3
+            A_next[rest] = val
+        A.append(A_next)
+
+    elapsed = time.time() - t0
+    print(f"\nProtocol ops: {ops}")
+    print(f"Protocol time: {elapsed:.6f} s\n")
+
+if __name__ == "__main__":
+    print("=== Linear-Time Sumcheck (table from CSV) ===")
+    modulus = int(input("Prime modulus p: "))
+    n_vars  = int(input("Number of variables n: "))
+
+    csv_path = input("CSV file with evaluations [default: func25vars_mod17.csv]: ").strip()
+    if not csv_path:
+        csv_path = "func25vars_mod17.csv"
+
+    table = load_eval_table_from_csv(csv_path, n_vars, modulus)
+    rvals = get_challenges(n_vars, modulus)
+
+    linear_time_sc(table, n_vars, modulus, rvals)
